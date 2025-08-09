@@ -245,6 +245,6 @@ Set `LOG_LEVEL=DEBUG` in `.env` for detailed logging.
 ---
 
 **Submission Details**  
-Student: SEETHARAM KILLIVALAVAN  
-Roll Number: 3122 22 5001 124 
-Submission Date: 09 Aug 2025
+Name: SEETHARAM KILLIVALAVAN  
+Reg No. 3122 22 5001 124 
+Submission Date: 10th Aug 2025
