@@ -2,7 +2,8 @@
 """
 Custom ETL Data Connector for JSONPlaceholder API
 File: etl_connector.py
-Author: Seetharam Killivalavan - 3122 22 5001 124
+Author: Seetharam Killivalavan
+Reg No. 3122 22 5001 124
 Description: ETL pipeline to extract posts data from JSONPlaceholder API,
              transform it for MongoDB compatibility, and load into MongoDB collection.
 """
