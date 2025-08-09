@@ -1,6 +1,5 @@
 # Custom Python ETL Data Connector
 
-**File**: README.md  
 **Author**: SEETHARAM KILLIVALAVAN - 3122 22 5001 124 
 **Assignment**: Software Architecture - Custom Python ETL Data Connector  
 **Institution**: Kyureeus EdTech, SSN CSE
