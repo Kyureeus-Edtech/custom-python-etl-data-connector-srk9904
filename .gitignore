@@ -1,4 +1,4 @@
-# Git Ignore File for ETL Connector Project
+# Git Ignore File for NVD CVE ETL Connector Project
 # File: .gitignore
 
 # Environment variables and secrets
@@ -36,6 +36,7 @@ env/
 ENV/
 env.bak/
 venv.bak/
+.venv/
 
 # IDE files
 .vscode/
@@ -91,7 +92,3 @@ Pipfile.lock
 
 # Documentation builds
 docs/_build/
-
-.env
-.env
-.env

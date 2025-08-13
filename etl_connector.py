@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Custom ETL Data Connector for JSONPlaceholder API
+Custom ETL Data Connector for NVD CVE Feed
 File: etl_connector.py
-Author: Seetharam Killivalavan
-Reg No. 3122 22 5001 124
-Description: ETL pipeline to extract posts data from JSONPlaceholder API,
+Author: Seetharam Killivalavan - 3122 22 5001 124 - CSE-C
+Description: ETL pipeline to extract CVE data from NVD (National Vulnerability Database),
              transform it for MongoDB compatibility, and load into MongoDB collection.
+Data Source: Entry #13 from provided connector list - NVD CVE Feed
 """
 
 import os
@@ -13,7 +13,7 @@ import sys
 import json
 import time
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Any, Optional
 import requests
 from pymongo import MongoClient
@@ -31,10 +31,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-class ETLConnector:
+class NVDETLConnector:
     """
-    ETL Connector class for extracting data from JSONPlaceholder API
-    and loading it into MongoDB
+    ETL Connector class for extracting CVE data from NVD (National Vulnerability Database)
+    and loading it into MongoDB - Based on Entry #13 from connector requirements
     """
     
     def __init__(self):
@@ -42,15 +42,14 @@ class ETLConnector:
         # Load environment variables
         load_dotenv()
         
-        # API Configuration
-        self.base_url = os.getenv('API_BASE_URL', 'https://jsonplaceholder.typicode.com')
-        self.api_key = os.getenv('API_KEY')  # Not required for JSONPlaceholder
-        self.rate_limit_delay = float(os.getenv('RATE_LIMIT_DELAY', '1.0'))
+        # API Configuration (NVD CVE Feed - Entry #13 from connector list)
+        self.base_url = os.getenv('API_BASE_URL', 'https://services.nvd.nist.gov')
+        self.rate_limit_delay = float(os.getenv('RATE_LIMIT_DELAY', '6.0'))  # NVD requires 6 seconds between requests
         
         # MongoDB Configuration
         self.mongo_uri = os.getenv('MONGO_URI', 'mongodb://localhost:27017/')
         self.database_name = os.getenv('MONGO_DATABASE', 'etl_database')
-        self.collection_name = os.getenv('MONGO_COLLECTION', 'jsonplaceholder_posts_raw')
+        self.collection_name = os.getenv('MONGO_COLLECTION', 'nvd_cve_raw')
         
         # Initialize MongoDB client
         self.mongo_client = None
@@ -60,15 +59,9 @@ class ETLConnector:
         # Request session for connection pooling
         self.session = requests.Session()
         self.session.headers.update({
-            'User-Agent': 'ETL-Connector/1.0',
-            'Content-Type': 'application/json'
+            'User-Agent': 'ETL-Connector/1.0 (Educational Purpose)',
+            'Accept': 'application/json'
         })
-        
-        # Add API key to headers if provided
-        if self.api_key:
-            self.session.headers.update({
-                'Authorization': f'Bearer {self.api_key}'
-            })
     
     def connect_to_mongodb(self) -> bool:
         """
@@ -89,55 +82,62 @@ class ETLConnector:
             logger.error(f"Failed to connect to MongoDB: {e}")
             return False
     
-    def extract_data(self, endpoint: str, params: Optional[Dict] = None) -> List[Dict[str, Any]]:
+    def extract_data(self, days_back: int = 7) -> List[Dict[str, Any]]:
         """
-        Extract data from API endpoint
+        Extract CVE data from NVD API (Entry #13 from connector list)
         
         Args:
-            endpoint (str): API endpoint to call
-            params (dict, optional): Query parameters
+            days_back (int): Number of days back to fetch CVEs (default: 7)
             
         Returns:
-            List[Dict]: Extracted data or empty list on failure
+            List[Dict]: Extracted CVE data or empty list on failure
         """
-        url = f"{self.base_url}/{endpoint.lstrip('/')}"
-        all_data = []
+        all_cves = []
         
         try:
-            logger.info(f"Extracting data from: {url}")
+            # Calculate date range (NVD requires date filters)
+            end_date = datetime.now(timezone.utc)
+            start_date = end_date - timedelta(days=days_back)
             
-            # Handle pagination if needed (JSONPlaceholder doesn't paginate, but this is a template)
-            page = 1
-            while True:
-                current_params = params.copy() if params else {}
-                current_params.update({'_page': page, '_limit': 20})
-                
-                response = self.session.get(url, params=current_params, timeout=30)
-                
-                # Handle rate limiting
-                if response.status_code == 429:
-                    logger.warning("Rate limit hit, waiting...")
-                    time.sleep(self.rate_limit_delay * 2)
-                    continue
-                
-                response.raise_for_status()
-                data = response.json()
-                
-                # Break if no more data (for APIs that support pagination)
-                if not data or len(data) == 0:
-                    break
-                
-                all_data.extend(data if isinstance(data, list) else [data])
-                
-                # For JSONPlaceholder, we get all data in one request, so break after first iteration
-                if endpoint == 'posts' and page == 1:
-                    break
-                
-                page += 1
-                time.sleep(self.rate_limit_delay)
+            # Format dates for NVD API (ISO format)
+            start_date_str = start_date.strftime('%Y-%m-%dT%H:%M:%S.000')
+            end_date_str = end_date.strftime('%Y-%m-%dT%H:%M:%S.000')
             
-            logger.info(f"Successfully extracted {len(all_data)} records")
-            return all_data
+            # Build API endpoint from connector list
+            endpoint = '/rest/json/cves/2.0'
+            url = f"{self.base_url}{endpoint}"
+            
+            logger.info(f"Extracting CVE data from: {url}")
+            logger.info(f"Date range: {start_date_str} to {end_date_str}")
+            
+            # API parameters
+            params = {
+                'pubStartDate': start_date_str,
+                'pubEndDate': end_date_str,
+                'resultsPerPage': 20,  # Start with smaller batch for demo
+                'startIndex': 0
+            }
+            
+            # Single request for demo purposes (to avoid long wait times)
+            logger.info(f"Requesting CVEs from NVD API...")
+            
+            response = self.session.get(url, params=params, timeout=30)
+            
+            # Handle rate limiting (NVD is strict about this)
+            if response.status_code == 429:
+                logger.warning("Rate limit hit, waiting 10 seconds...")
+                time.sleep(10)
+                response = self.session.get(url, params=params, timeout=30)
+            
+            response.raise_for_status()
+            data = response.json()
+            
+            # Extract CVEs from response
+            cves = data.get('vulnerabilities', [])
+            all_cves.extend(cves)
+            
+            logger.info(f"Successfully extracted {len(all_cves)} CVE records")
+            return all_cves
             
         except requests.exceptions.RequestException as e:
             logger.error(f"API request failed: {e}")
@@ -151,10 +151,10 @@ class ETLConnector:
     
     def transform_data(self, raw_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
-        Transform raw data for MongoDB compatibility
+        Transform raw CVE data for MongoDB compatibility
         
         Args:
-            raw_data (List[Dict]): Raw data from API
+            raw_data (List[Dict]): Raw CVE data from NVD API
             
         Returns:
             List[Dict]: Transformed data
@@ -162,74 +162,121 @@ class ETLConnector:
         transformed_data = []
         current_timestamp = datetime.now(timezone.utc)
         
-        for record in raw_data:
+        for cve_record in raw_data:
             try:
+                # Extract CVE details
+                cve = cve_record.get('cve', {})
+                cve_id = cve.get('id', 'unknown')
+                
+                # Extract basic information
+                descriptions = cve.get('descriptions', [])
+                english_desc = next((d['value'] for d in descriptions if d.get('lang') == 'en'), '')
+                
+                # Extract CVSS scores
+                metrics = cve.get('metrics', {})
+                cvss_v3 = metrics.get('cvssMetricV31', [])
+                cvss_score = cvss_v3[0].get('cvssData', {}).get('baseScore') if cvss_v3 else None
+                cvss_severity = cvss_v3[0].get('cvssData', {}).get('baseSeverity') if cvss_v3 else None
+                
+                # Extract references
+                references = cve.get('references', [])
+                reference_urls = [ref.get('url', '') for ref in references]
+                
+                # Extract CWE information
+                weaknesses = cve.get('weaknesses', [])
+                cwe_ids = []
+                for weakness in weaknesses:
+                    for desc in weakness.get('description', []):
+                        if desc.get('lang') == 'en':
+                            cwe_ids.append(desc.get('value', ''))
+                
                 # Create transformed record
                 transformed_record = {
                     # Original data
-                    'original_data': record,
+                    'original_data': cve_record,
                     
                     # ETL metadata
                     'etl_metadata': {
                         'ingestion_timestamp': current_timestamp,
-                        'source': 'jsonplaceholder_api',
+                        'source': 'nvd_cve_feed',
                         'version': '1.0',
-                        'record_id': record.get('id'),
-                        'data_quality_score': self._calculate_data_quality(record)
+                        'record_id': cve_id,
+                        'data_quality_score': self._calculate_cve_quality(cve)
                     },
                     
                     # Flatten and clean important fields
-                    'post_id': record.get('id'),
-                    'user_id': record.get('userId'),
-                    'title': record.get('title', '').strip(),
-                    'body': record.get('body', '').strip(),
-                    'title_word_count': len(record.get('title', '').split()),
-                    'body_word_count': len(record.get('body', '').split()),
-                    'has_content': bool(record.get('title') or record.get('body')),
+                    'cve_id': cve_id,
+                    'description': english_desc,
+                    'published_date': cve.get('published'),
+                    'last_modified': cve.get('lastModified'),
+                    'cvss_score': cvss_score,
+                    'cvss_severity': cvss_severity,
+                    'reference_count': len(reference_urls),
+                    'reference_urls': reference_urls[:10],  # Limit to first 10 references
+                    'cwe_ids': cwe_ids,
+                    'has_cvss_score': cvss_score is not None,
+                    'is_recent': self._is_recent_cve(cve.get('published')),
+                    'description_length': len(english_desc),
+                    'severity_level': self._map_severity_to_level(cvss_severity)
                 }
-                
-                # Add derived fields
-                transformed_record['content_length'] = len(
-                    (transformed_record['title'] + ' ' + transformed_record['body']).strip()
-                )
                 
                 transformed_data.append(transformed_record)
                 
             except Exception as e:
-                logger.warning(f"Failed to transform record {record}: {e}")
+                logger.warning(f"Failed to transform CVE record {cve_record}: {e}")
                 continue
         
-        logger.info(f"Successfully transformed {len(transformed_data)} records")
+        logger.info(f"Successfully transformed {len(transformed_data)} CVE records")
         return transformed_data
     
-    def _calculate_data_quality(self, record: Dict[str, Any]) -> float:
+    def _calculate_cve_quality(self, cve: Dict[str, Any]) -> float:
         """
-        Calculate a simple data quality score (0-1)
+        Calculate a simple data quality score for CVE (0-1)
         
         Args:
-            record (Dict): Data record
+            cve (Dict): CVE data
             
         Returns:
             float: Quality score
         """
         score = 0.0
-        total_checks = 4
         
         # Check for required fields
-        if record.get('id'):
+        if cve.get('id'):
             score += 0.25
-        if record.get('userId'):
+        if cve.get('descriptions'):
             score += 0.25
-        if record.get('title') and len(record['title'].strip()) > 0:
+        if cve.get('metrics', {}).get('cvssMetricV31'):
             score += 0.25
-        if record.get('body') and len(record['body'].strip()) > 0:
+        if cve.get('references'):
             score += 0.25
         
         return score
     
+    def _is_recent_cve(self, published_date: str) -> bool:
+        """Check if CVE is recent (within last 30 days)"""
+        if not published_date:
+            return False
+        try:
+            pub_date = datetime.fromisoformat(published_date.replace('Z', '+00:00'))
+            cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+            return pub_date > cutoff
+        except:
+            return False
+    
+    def _map_severity_to_level(self, severity: str) -> int:
+        """Map CVSS severity to numeric level"""
+        severity_map = {
+            'LOW': 1,
+            'MEDIUM': 2,
+            'HIGH': 3,
+            'CRITICAL': 4
+        }
+        return severity_map.get(severity, 0)
+    
     def load_data(self, transformed_data: List[Dict[str, Any]]) -> bool:
         """
-        Load transformed data into MongoDB
+        Load transformed CVE data into MongoDB
         
         Args:
             transformed_data (List[Dict]): Transformed data to load
@@ -244,10 +291,11 @@ class ETLConnector:
         try:
             # Create indexes for better query performance
             self.collection.create_index("etl_metadata.ingestion_timestamp")
-            self.collection.create_index("post_id", unique=True)
-            self.collection.create_index("user_id")
+            self.collection.create_index("cve_id", unique=True)
+            self.collection.create_index("cvss_severity")
+            self.collection.create_index("published_date")
             
-            # Use direct insert/update operations instead of bulk_write
+            # Use direct insert/update operations
             inserted_count = 0
             updated_count = 0
             
@@ -255,7 +303,7 @@ class ETLConnector:
                 try:
                     # Try to update existing record, insert if not found
                     result = self.collection.replace_one(
-                        {'post_id': record['post_id']},
+                        {'cve_id': record['cve_id']},
                         record,
                         upsert=True
                     )
@@ -266,7 +314,7 @@ class ETLConnector:
                         updated_count += 1
                         
                 except Exception as e:
-                    logger.warning(f"Failed to process record {record.get('post_id', 'unknown')}: {e}")
+                    logger.warning(f"Failed to process CVE {record.get('cve_id', 'unknown')}: {e}")
                     continue
             
             logger.info(f"Data load completed: {inserted_count} inserted, {updated_count} updated")
@@ -278,12 +326,12 @@ class ETLConnector:
     
     def run_etl_pipeline(self) -> bool:
         """
-        Execute the complete ETL pipeline
+        Execute the complete ETL pipeline for NVD CVE data
         
         Returns:
             bool: True if pipeline completed successfully
         """
-        logger.info("Starting ETL pipeline execution")
+        logger.info("Starting NVD CVE ETL pipeline execution")
         start_time = time.time()
         
         try:
@@ -291,8 +339,8 @@ class ETLConnector:
             if not self.connect_to_mongodb():
                 return False
             
-            # Step 2: Extract data
-            raw_data = self.extract_data('posts')
+            # Step 2: Extract data (last 7 days of CVEs)
+            raw_data = self.extract_data(days_back=7)
             if not raw_data:
                 logger.error("No data extracted, stopping pipeline")
                 return False
@@ -315,11 +363,10 @@ class ETLConnector:
         except Exception as e:
             logger.error(f"ETL pipeline failed: {e}")
             return False
-        # Note: MongoDB client cleanup moved to main() function to allow stats collection
     
     def get_pipeline_stats(self) -> Dict[str, Any]:
         """
-        Get statistics about the data in MongoDB collection
+        Get statistics about the CVE data in MongoDB collection
         
         Returns:
             Dict: Pipeline statistics
@@ -331,10 +378,12 @@ class ETLConnector:
             total_records = self.collection.count_documents({})
             
             stats = {
-                'total_records': total_records,
-                'users_count': len(self.collection.distinct('user_id')),
+                'total_cves': total_records,
+                'critical_count': self.collection.count_documents({'cvss_severity': 'CRITICAL'}),
+                'high_count': self.collection.count_documents({'cvss_severity': 'HIGH'}),
+                'recent_cves': self.collection.count_documents({'is_recent': True}),
                 'latest_ingestion': None,
-                'avg_content_length': 0
+                'avg_cvss_score': 0
             }
             
             # Only get additional stats if we have records
@@ -346,12 +395,13 @@ class ETLConnector:
                 if latest_record:
                     stats['latest_ingestion'] = latest_record.get('etl_metadata', {}).get('ingestion_timestamp')
                 
-                # Get average content length
+                # Get average CVSS score
                 avg_result = list(self.collection.aggregate([
-                    {'$group': {'_id': None, 'avg_length': {'$avg': '$content_length'}}}
+                    {'$match': {'cvss_score': {'$ne': None}}},
+                    {'$group': {'_id': None, 'avg_score': {'$avg': '$cvss_score'}}}
                 ]))
                 if avg_result:
-                    stats['avg_content_length'] = round(avg_result[0].get('avg_length', 0), 2)
+                    stats['avg_cvss_score'] = round(avg_result[0].get('avg_score', 0), 2)
             
             return stats
         except Exception as e:
@@ -360,8 +410,8 @@ class ETLConnector:
 
 
 def main():
-    """Main function to run the ETL connector"""
-    connector = ETLConnector()
+    """Main function to run the NVD CVE ETL connector"""
+    connector = NVDETLConnector()
     
     try:
         # Run the ETL pipeline

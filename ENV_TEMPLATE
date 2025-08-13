@@ -1,0 +1,16 @@
+# ENV_TEMPLATE - Environment Variables Reference
+# File: ENV_TEMPLATE
+# This file serves as a reference for required environment variables
+# DO NOT include real API keys, passwords, or sensitive information
+
+# API Configuration - NVD CVE Feed
+API_BASE_URL=your_api_base_url
+RATE_LIMIT_DELAY=your_rate_limit_delay_in_seconds
+
+# MongoDB Configuration
+MONGO_URI=your_mongodb_connection_string
+MONGO_DATABASE=your_database_name
+MONGO_COLLECTION=your_collection_name
+
+# Logging Configuration
+LOG_LEVEL=your_log_level
